@@ -2,15 +2,24 @@
 
 require 'optparse'
 require 'ostruct'
+require 'json'
 
 RASPIGEN_VERSION = [0, 0, 1]
+
+# Errors codes of raspigen
+ERROR_CONFIGURATION_DOES_NOT_EXIST = 1
 
 class Options
    def self.parse(args)
       options = OpenStruct.new
+      options.size = 0
       
       opt_parser = OptionParser.new do |opts|
          opts.banner = 'Usage: raspigen [options]'
+
+         opts.on '-s', '--size IMAGESIZE', 'Set size of image in byte' do |s|
+            options.size = s.to_i
+         end
 
          opts.on_tail '-h', '--help', 'Show this message' do
             puts opts
@@ -28,5 +37,56 @@ class Options
    end
 end
 
+def ansi_colorize(text, color_code)
+   "#{color_code}#{text}\033[0m"
+end
+
+def red(text)
+   ansi_colorize text, "\033[1m\033[31m"
+end
+
+def green(text)
+   ansi_colorize text, "\033[1m\033[32m"
+end
+
+def suceeded
+   puts '[' + green('OK') + ']'
+end
+
+def failed
+   puts '[' + red('FAILED') + ']'
+end
+
+def result(program_result)
+   if program_result.success?
+      suceeded
+   else
+      failed
+      exit 1
+   end
+end
+
+def create_disk_image(fileName, size)
+   print "  Creating disk image '#{fileName}' (#{size} byte)... "
+   output = `dd if=/dev/zero of=#{fileName} count=1 bs=#{size} 2>&1`
+   result $?
+end
+
+# Main program
 options = Options.parse ARGV
+
+puts "raspigen #{RASPIGEN_VERSION.join '.'}"
+puts
+
+if options.size <= 512 * 1024 * 1024
+   puts "ERROR: Invalid disk image size (#{options.size} byte)"
+   puts
+   puts 'Please determine the size of your SD card for the Raspberry Pi and'
+   puts 'pass this value with the option --size. At least 512 MiB are'
+   puts 'required for this script.'
+
+   exit 1
+end
+
+create_disk_image 'gentoo.img', options.size
 
