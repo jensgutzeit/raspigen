@@ -1,0 +1,32 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'ostruct'
+
+RASPIGEN_VERSION = [0, 0, 1]
+
+class Options
+   def self.parse(args)
+      options = OpenStruct.new
+      
+      opt_parser = OptionParser.new do |opts|
+         opts.banner = 'Usage: raspigen [options]'
+
+         opts.on_tail '-h', '--help', 'Show this message' do
+            puts opts
+            exit
+         end
+
+         opts.on_tail '--version', 'Show version' do
+            puts "raspigen #{RASPIGEN_VERSION.join '.'}"
+            exit
+         end
+      end
+
+      opt_parser.parse! args
+      options
+   end
+end
+
+options = Options.parse ARGV
+
