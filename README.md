@@ -8,7 +8,6 @@ Gentoo disk image for a Raspberry Pi.
 It assumes that you are running a Linux with the following tools installed:
 
 * Ruby (>= 2.0)
-* dd
 
 ## License
 

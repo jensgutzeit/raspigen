@@ -2,20 +2,21 @@
 
 require 'optparse'
 require 'ostruct'
-require 'json'
 
-RASPIGEN_VERSION = [0, 0, 1]
-
-# Errors codes of raspigen
-ERROR_CONFIGURATION_DOES_NOT_EXIST = 1
+RASPIGEN_VERSION = [0, 0, 2]
 
 class Options
    def self.parse(args)
       options = OpenStruct.new
       options.size = 0
+      options.image_name = 'gentoo.img'
       
       opt_parser = OptionParser.new do |opts|
          opts.banner = 'Usage: raspigen [options]'
+
+         opts.on '-i', '--image NAME', 'Set name of image file [gentoo.img]' do |n|
+            options.image_name = n
+         end
 
          opts.on '-s', '--size IMAGESIZE', 'Set size of image in byte' do |s|
             options.size = s.to_i
@@ -68,8 +69,26 @@ end
 
 def create_disk_image(fileName, size)
    print "  Creating disk image '#{fileName}' (#{size} byte)... "
-   output = `dd if=/dev/zero of=#{fileName} count=1 bs=#{size} 2>&1`
-   result $?
+   
+   begin
+      s = "\0" * 65536
+      File.open('gentoo.img', 'w+') do |f|
+         while size >= 65536
+            written = f.write s
+            size -= written
+         end
+
+         if 0 != size
+            s = "\0" * size
+            written = f.write s
+         end
+      end
+
+      suceeded
+   rescue
+      failed
+      exit 1
+   end
 end
 
 # Main program
@@ -88,5 +107,5 @@ if options.size <= 512 * 1024 * 1024
    exit 1
 end
 
-create_disk_image 'gentoo.img', options.size
+create_disk_image options.image_name, options.size
 
