@@ -67,8 +67,8 @@ def result(program_result)
    end
 end
 
-def create_disk_image(fileName, size)
-   print "  Creating disk image '#{fileName}' (#{size} byte)... "
+def create_disk_image(imageName, size)
+   print "  Creating disk image '#{imageName}' (#{size} byte)... "
    
    begin
       s = "\0" * 65536
@@ -91,6 +91,54 @@ def create_disk_image(fileName, size)
    end
 end
 
+def use_image_as_loop_device(imageName, loopDevice)
+   print "  Using '#{imageName}' as #{loopDevice} ... "
+   output = `sudo losetup #{loopDevice} #{imageName}`
+   result $?
+end
+
+def detach_loop_device(loopDevice)
+   print "  Detaching '#{loopDevice}'... "
+   output = `sudo losetup --detach #{loopDevice}`
+   result $?
+end
+
+def create_partition(loopDevice, type, size, startSector)
+   sizeBytes = size * 1024 * 1024
+   sizeSectors = sizeBytes / 512
+   endSector = startSector + sizeSectors
+   output = `sudo parted -s #{loopDevice} unit s mkpart primary #{type} -- #{startSector} #{endSector}`
+   result $?
+
+   endSector
+end
+
+def create_partitions(loopDevice, boot_size = 96, swap_size = 512)
+   puts "  Creating partitions..."
+
+   print "    Creating new disklabel ... " 
+   output = `sudo parted -s #{loopDevice} mklabel msdos`
+   result $?
+
+   puts "    Creating partition for /boot ..."
+
+   print "      Creating a new primary partition (#{boot_size} MiB) ... "
+   bootEndSector = create_partition loopDevice, 'fat32', boot_size, 2048
+
+   print "      Making new partition bootable ... "
+   output = `sudo parted -s #{loopDevice} set 1 boot on`
+   result $?
+
+   puts "    Creating new partition for /swap ... "
+
+   print "      Creating a new primary partition (#{swap_size} MiB) ... "
+   swapEndSector = create_partition loopDevice, 'linux-swap', swap_size, bootEndSector + 1
+
+   print "    Creating new partition for / ... "
+   output = `sudo parted -s #{loopDevice} unit s mkpart primary ext2 -- #{swapEndSector + 1} -1s`
+   result $?
+end
+
 # Main program
 options = Options.parse ARGV
 
@@ -107,5 +155,18 @@ if options.size <= 512 * 1024 * 1024
    exit 1
 end
 
-create_disk_image options.image_name, options.size
+if 0 != options.size % 512
+   suggestion = 512 * (options.size / 512)
+   puts "ERROR: Size of disk image must be multiple of 512"
+   puts
+   puts "The next lower multiple of 512 is #{suggestion}."
 
+   exit 1
+end
+
+loop_device = '/dev/loop0'
+
+create_disk_image(options.image_name, options.size)
+use_image_as_loop_device(options.image_name, loop_device)
+create_partitions(loop_device)
+detach_loop_device(loop_device)
