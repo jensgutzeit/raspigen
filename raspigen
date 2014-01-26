@@ -139,6 +139,20 @@ def create_partitions(loopDevice, boot_size = 96, swap_size = 512)
    result $?
 end
 
+def format_partitions(loopDevice)
+   print "  Formatting /boot... "
+   `sudo mkfs.msdos -F 16 #{loopDevice}p1 -n BOOT`
+   result $?
+
+   print "  Setting up swap area... "
+   `sudo mkswap --label SWAP #{loopDevice}p2`
+   result $?
+
+   print "  Formatting /... "
+   `sudo mkfs.ext4 -q -L ROOT #{loopDevice}p3`
+   result $?
+end
+
 # Main program
 options = Options.parse ARGV
 
@@ -164,9 +178,10 @@ if 0 != options.size % 512
    exit 1
 end
 
-loop_device = '/dev/loop0'
+loopDevice = '/dev/loop0'
 
 create_disk_image(options.image_name, options.size)
-use_image_as_loop_device(options.image_name, loop_device)
-create_partitions(loop_device)
-detach_loop_device(loop_device)
+use_image_as_loop_device(options.image_name, loopDevice)
+create_partitions(loopDevice)
+format_partitions(loopDevice)
+detach_loop_device(loopDevice)
