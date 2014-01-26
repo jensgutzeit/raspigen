@@ -2,6 +2,7 @@
 
 require 'optparse'
 require 'ostruct'
+require 'net/http'
 
 RASPIGEN_VERSION = [0, 0, 4]
 
@@ -50,7 +51,7 @@ def green(text)
    ansi_colorize text, "\033[1m\033[32m"
 end
 
-def suceeded
+def succeeded
    puts '[' + green('OK') + ']'
 end
 
@@ -60,7 +61,7 @@ end
 
 def result(program_result)
    if program_result.success?
-      suceeded
+      succeeded
    else
       failed
       exit 1
@@ -135,6 +136,107 @@ def format_partitions(loopDevice)
    result $?
 end
 
+def mount_image(loopDevice)
+   if not File.exist? 'gentoo'
+      print "  Creating mount point (./gentoo)... "
+      `sudo mkdir gentoo`
+      result $?
+   end
+
+   print "  Mounting image's /... "
+   `sudo mount #{loopDevice}p3 gentoo`
+   result $?
+
+   print "  Creating gentoo/boot... "
+   `sudo mkdir gentoo/boot`
+   result $?
+
+   print "  Mounting image's /boot... "
+   `sudo mount #{loopDevice}p1 gentoo/boot` 
+   result $?
+end
+
+def latest_stage3(mirror)
+   prefix = URI::join(mirror , 'releases/arm/autobuilds/')
+   latestUri = URI::join(prefix , 'latest-stage3-armv6j_hardfp.txt')
+   content = Net::HTTP.get(latestUri)   
+
+   latestTarball = ""
+   content.each_line("\n") do |line|
+      line.strip!
+      if not line.empty? and not line.start_with?("#")
+         latestTarball = URI::join(prefix, line)
+      end
+   end
+
+   return latestTarball.to_s
+end
+
+def sha512HashFromFile(fileName)
+   File.open(fileName, "r") do |f|
+      while (line = f.gets)
+         if "# SHA512 HASH" == line.strip
+            return f.gets.strip
+         end
+      end
+   end
+
+   return ""
+end
+
+def download_latest_stage3(mirror)
+   latest = latest_stage3(mirror)
+   fileName = File.basename(latest)
+
+   if not File.exist?(fileName)
+      print "  Downloading latest stage3 tarball... "
+      `wget --quiet -c #{latest}`
+      result $?
+   end
+
+   latestChecksums = latest + ".DIGESTS.asc"
+   latestChecksumsFileName = File.basename(latestChecksums)
+   if not File.exist?(latestChecksumsFileName)
+      print "  Downloading checksums for stage3 tarball... "
+      `wget --quiet -c #{latestChecksums}`
+      result $?
+   end
+
+   print "  Validating stage3 checksums... "
+   `gpg --verify #{latestChecksumsFileName} 2>&1`
+   result $?
+
+   print "  Calculating stage3 SHA-512 hash... "
+   hash = `sha512sum #{fileName}`
+   result $?
+
+   print "  Verifying stage3 checksum... "
+   if hash.strip == sha512HashFromFile(latestChecksumsFileName)
+      succeeded
+   else
+      failed
+      exit 1
+   end
+
+   fileName
+end
+
+def extract_stage3(fileName)
+   print "  Extracting stage 3 image... "
+   `sudo tar xfpj #{fileName} -C gentoo/`
+   result $?
+end
+
+def unmount_image(loopDevice)
+   print "  Unmounting gentoo/boot... "
+   `sudo umount gentoo/boot`
+   result $?
+
+   print "  Unmounting gentoo... "
+   `sudo umount gentoo`
+   result $?
+end
+
 # Main program
 options = Options.parse ARGV
 
@@ -161,9 +263,14 @@ if 0 != options.size % 512
 end
 
 loopDevice = '/dev/loop0'
+mirror = 'http://de-mirror.org/gentoo/'
 
 create_disk_image(options.image_name, options.size)
 use_image_as_loop_device(options.image_name, loopDevice)
 create_partitions(loopDevice)
 format_partitions(loopDevice)
+mount_image(loopDevice)
+stage3FileName = download_latest_stage3(mirror)
+extract_stage3(stage3FileName)
+unmount_image(loopDevice)
 detach_loop_device(loopDevice)
