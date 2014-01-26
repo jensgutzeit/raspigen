@@ -3,7 +3,7 @@
 require 'optparse'
 require 'ostruct'
 
-RASPIGEN_VERSION = [0, 0, 2]
+RASPIGEN_VERSION = [0, 0, 3]
 
 class Options
    def self.parse(args)
@@ -106,7 +106,7 @@ end
 def create_partition(loopDevice, type, size, startSector)
    sizeBytes = size * 1024 * 1024
    sizeSectors = sizeBytes / 512
-   endSector = startSector + sizeSectors
+   endSector = startSector + sizeSectors - 1
    output = `sudo parted -s #{loopDevice} unit s mkpart primary #{type} -- #{startSector} #{endSector}`
    result $?
 
