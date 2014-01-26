@@ -3,7 +3,7 @@
 require 'optparse'
 require 'ostruct'
 
-RASPIGEN_VERSION = [0, 0, 3]
+RASPIGEN_VERSION = [0, 0, 4]
 
 class Options
    def self.parse(args)
@@ -69,26 +69,8 @@ end
 
 def create_disk_image(imageName, size)
    print "  Creating disk image '#{imageName}' (#{size} byte)... "
-   
-   begin
-      s = "\0" * 65536
-      File.open('gentoo.img', 'w+') do |f|
-         while size >= 65536
-            written = f.write s
-            size -= written
-         end
-
-         if 0 != size
-            s = "\0" * size
-            written = f.write s
-         end
-      end
-
-      suceeded
-   rescue
-      failed
-      exit 1
-   end
+   `truncate -s #{size} #{imageName}`
+   result $?
 end
 
 def use_image_as_loop_device(imageName, loopDevice)
