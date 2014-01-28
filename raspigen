@@ -4,7 +4,7 @@ require 'optparse'
 require 'ostruct'
 require 'net/http'
 
-RASPIGEN_VERSION = [0, 0, 4]
+RASPIGEN_VERSION = [0, 0, 5]
 
 class Options
    def self.parse(args)
@@ -97,27 +97,25 @@ def create_partition(loopDevice, type, size, startSector)
 end
 
 def create_partitions(loopDevice, boot_size = 96, swap_size = 512)
-   puts "  Creating partitions..."
-
-   print "    Creating new disklabel ... " 
+   print "  Creating new disklabel ... " 
    output = `sudo parted -s #{loopDevice} mklabel msdos`
    result $?
 
-   puts "    Creating partition for /boot ..."
+   puts "  Creating partition for /boot ..."
 
-   print "      Creating a new primary partition (#{boot_size} MiB) ... "
+   print "  Creating a new primary partition (#{boot_size} MiB) ... "
    bootEndSector = create_partition loopDevice, 'fat32', boot_size, 2048
 
-   print "      Making new partition bootable ... "
+   print "  Making new partition bootable ... "
    output = `sudo parted -s #{loopDevice} set 1 boot on`
    result $?
 
-   puts "    Creating new partition for /swap ... "
+   puts "  Creating new partition for /swap ... "
 
-   print "      Creating a new primary partition (#{swap_size} MiB) ... "
+   print "  Creating a new primary partition (#{swap_size} MiB) ... "
    swapEndSector = create_partition loopDevice, 'linux-swap', swap_size, bootEndSector + 1
 
-   print "    Creating new partition for / ... "
+   print "  Creating new partition for / ... "
    output = `sudo parted -s #{loopDevice} unit s mkpart primary ext2 -- #{swapEndSector + 1} -1s`
    result $?
 end
@@ -227,6 +225,12 @@ def extract_stage3(fileName)
    result $?
 end
 
+def extract_portage_snapshot(fileName)
+   print "  Extracting portage snapshot... "
+   `sudo tar xf #{fileName} -C gentoo/usr`
+   result $?
+end
+
 def unmount_image(loopDevice)
    print "  Unmounting gentoo/boot... "
    `sudo umount gentoo/boot`
@@ -235,6 +239,66 @@ def unmount_image(loopDevice)
    print "  Unmounting gentoo... "
    `sudo umount gentoo`
    result $?
+end
+
+def download_latest_portage(mirror)
+   portageUri = URI::join(mirror, 'snapshots/portage-latest.tar.xz')
+   portageFileName = 'portage-latest.tar.xz' 
+   md5Uri = URI::join(mirror, 'snapshots/portage-latest.tar.xz.md5sum')
+   md5FileName = 'portage-latest.tar.xz.md5sum'
+   signatureUri = URI::join(mirror, 'snapshots/portage-latest.tar.xz.gpgsig')
+   signatureFileName = 'portage-latest.tar.xz.gpgsig'
+
+   lastMD5 = '' 
+   if File.exist?(signatureFileName)
+      f = File.open(signatureFileName, 'r')
+      lastMD5 = f.read
+      f.close
+   end
+
+   print "  Downloading checksum of portage snapshot... "
+   `wget --quiet -c #{md5Uri}`
+   result $?
+
+   f = File.open(md5FileName, 'r')
+   newMD5 = f.read
+   f.close
+
+   if lastMD5 != newMD5
+      print "  Downloading latest portage snapshot... "
+      `wget --quiet -c #{portageUri}`
+      result $?
+
+      print "  Downloading signature of snapshot... "
+      `wget --quiet -c #{signatureUri}`
+      result $?
+   end
+
+   print "  Validating signature of snapshot... "
+   `gpg --verify #{signatureFileName} #{portageFileName} 2>&1`
+   result $?
+
+   print "  Calculating MD5 hash of snapshot... "
+   hash = `md5sum #{portageFileName}`
+   result $?
+
+   print "  Verifying hash of portage snapshot... "
+   if hash.strip == newMD5.strip
+      succeeded
+   else
+      failed
+      exit 1
+   end
+
+   portageFileName
+end
+
+def download_latest_firmware
+   print "  Downloading latest kernel... "
+   `git clone --depth 1 git://github.com/raspberrypi/firmware/ 2>&1`
+   result $?
+
+   "firmware"
 end
 
 # Main program
@@ -265,12 +329,16 @@ end
 loopDevice = '/dev/loop0'
 mirror = 'http://de-mirror.org/gentoo/'
 
+stage3FileName = download_latest_stage3(mirror)
+latestPortageFileName = download_latest_portage(mirror)
+firmwarePath = download_latest_firmware
+
 create_disk_image(options.image_name, options.size)
 use_image_as_loop_device(options.image_name, loopDevice)
 create_partitions(loopDevice)
 format_partitions(loopDevice)
 mount_image(loopDevice)
-stage3FileName = download_latest_stage3(mirror)
 extract_stage3(stage3FileName)
+extract_portage_snapshot(latestPortageFileName)
 unmount_image(loopDevice)
 detach_loop_device(loopDevice)
