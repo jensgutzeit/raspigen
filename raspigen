@@ -3,8 +3,9 @@
 require 'optparse'
 require 'ostruct'
 require 'net/http'
+require 'fileutils'
 
-RASPIGEN_VERSION = [0, 0, 5]
+RASPIGEN_VERSION = [0, 0, 6]
 
 class Options
    def self.parse(args)
@@ -254,6 +255,8 @@ def download_latest_portage(mirror)
       f = File.open(signatureFileName, 'r')
       lastMD5 = f.read
       f.close
+
+      File.delete signatureFileName
    end
 
    print "  Downloading checksum of portage snapshot... "
@@ -294,11 +297,31 @@ def download_latest_portage(mirror)
 end
 
 def download_latest_firmware
-   print "  Downloading latest kernel... "
-   `git clone --depth 1 git://github.com/raspberrypi/firmware/ 2>&1`
-   result $?
+   if not Dir.exist?("firmware")
+      print "  Cloing latest kernel repository... "
+      `git clone --depth 1 git://github.com/raspberrypi/firmware/ 2>&1`
+      result $?
+   else
+      print "  Updating latest kernel repository... "
+      Dir.chdir "firmware"
+      `git pull`
+      Dir.chdir ".."
+      result $?
+   end
 
    "firmware"
+end
+
+def install_kernel_and_firmware(firmwarePath)
+   print "  Copying kernel and boot code... "
+   `sudo cp firmware/boot/* gentoo/boot`
+   result $?
+end
+
+def copy_kernel_modules(firmwarePath)
+   print "  Copying kernenl modules... "
+   `sudo cp -r firmware/modules gentoo/lib`
+   result $?
 end
 
 # Main program
@@ -340,5 +363,7 @@ format_partitions(loopDevice)
 mount_image(loopDevice)
 extract_stage3(stage3FileName)
 extract_portage_snapshot(latestPortageFileName)
+install_kernel_and_firmware(firmwarePath)
+copy_kernel_modules(firmwarePath)
 unmount_image(loopDevice)
 detach_loop_device(loopDevice)
