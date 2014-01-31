@@ -3,4 +3,5 @@
 portage-*.*
 stage3-*.*
 gentoo.img
+gentoo/
 firmware/
