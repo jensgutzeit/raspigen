@@ -1,2 +1,6 @@
 *.un~
 *.swp
+portage-*.*
+stage3-*.*
+gentoo.img
+firmware/
