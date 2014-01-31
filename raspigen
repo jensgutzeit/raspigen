@@ -5,7 +5,7 @@ require 'ostruct'
 require 'net/http'
 require 'fileutils'
 
-RASPIGEN_VERSION = [0, 0, 6]
+RASPIGEN_VERSION = [0, 0, 7]
 
 class Options
    def self.parse(args)
@@ -338,8 +338,31 @@ def install_kernel_and_firmware(firmwarePath)
 end
 
 def copy_kernel_modules(firmwarePath)
-   print "Copying kernenl modules... "
+   print "Copying kernel modules... "
    `sudo cp -r firmware/modules gentoo/lib`
+   result $?
+end
+
+def copy_fstab
+   print "Copying /etc/fstab... "
+   `sudo cp files/fstab gentoo/etc/fstab`
+   result $?
+end
+
+def copy_cmdline_txt
+   print "Copying /boot/cmdline.txt... "
+   `sudo cp files/cmdline.txt gentoo/boot/`
+   result $?
+end
+
+def configure_timezone(timezone)
+   print "Creating /etc/localtime... "
+   tzFile = File.join('gentoo/usr/share/zoneinfo/', timezone)
+   `sudo cp #{tzFile} gentoo/etc/localtime`
+   result $?
+
+   print "Creating /etc/timezone... "
+   `sudo sh -c "echo '#{timezone}' > gentoo/etc/timezone"`
    result $?
 end
 
@@ -370,6 +393,7 @@ end
 
 loopDevice = '/dev/loop0'
 mirror = 'http://de-mirror.org/gentoo/'
+timezone = 'Europe/Berlin'
 
 stage3FileName = download_latest_stage3(mirror)
 latestPortageFileName = download_latest_portage(mirror)
@@ -384,5 +408,8 @@ extract_stage3(stage3FileName)
 extract_portage_snapshot(latestPortageFileName)
 install_kernel_and_firmware(firmwarePath)
 copy_kernel_modules(firmwarePath)
+copy_fstab
+copy_cmdline_txt
+configure_timezone(timezone)
 unmount_image(loopDevice)
 detach_loop_device(loopDevice)
