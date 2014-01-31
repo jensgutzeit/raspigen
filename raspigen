@@ -70,19 +70,19 @@ def result(program_result)
 end
 
 def create_disk_image(imageName, size)
-   print "  Creating disk image '#{imageName}' (#{size} byte)... "
+   print "Creating disk image '#{imageName}' (#{size} byte)... "
    `truncate -s #{size} #{imageName}`
    result $?
 end
 
 def use_image_as_loop_device(imageName, loopDevice)
-   print "  Using '#{imageName}' as #{loopDevice} ... "
+   print "Using '#{imageName}' as #{loopDevice} ... "
    output = `sudo losetup #{loopDevice} #{imageName}`
    result $?
 end
 
 def detach_loop_device(loopDevice)
-   print "  Detaching '#{loopDevice}'... "
+   print "Detaching '#{loopDevice}'... "
    output = `sudo losetup --detach #{loopDevice}`
    result $?
 end
@@ -98,59 +98,59 @@ def create_partition(loopDevice, type, size, startSector)
 end
 
 def create_partitions(loopDevice, boot_size = 96, swap_size = 512)
-   print "  Creating new disklabel ... " 
+   print "Creating new disklabel ... " 
    output = `sudo parted -s #{loopDevice} mklabel msdos`
    result $?
 
-   puts "  Creating partition for /boot ..."
+   puts "Creating partition for /boot ..."
 
-   print "  Creating a new primary partition (#{boot_size} MiB) ... "
+   print "Creating a new primary partition (#{boot_size} MiB) ... "
    bootEndSector = create_partition loopDevice, 'fat32', boot_size, 2048
 
-   print "  Making new partition bootable ... "
+   print "Making new partition bootable ... "
    output = `sudo parted -s #{loopDevice} set 1 boot on`
    result $?
 
-   puts "  Creating new partition for /swap ... "
+   puts "Creating new partition for /swap ... "
 
-   print "  Creating a new primary partition (#{swap_size} MiB) ... "
+   print "Creating a new primary partition (#{swap_size} MiB) ... "
    swapEndSector = create_partition loopDevice, 'linux-swap', swap_size, bootEndSector + 1
 
-   print "  Creating new partition for / ... "
+   print "Creating new partition for / ... "
    output = `sudo parted -s #{loopDevice} unit s mkpart primary ext2 -- #{swapEndSector + 1} -1s`
    result $?
 end
 
 def format_partitions(loopDevice)
-   print "  Formatting /boot... "
+   print "Formatting /boot... "
    `sudo mkfs.msdos -F 16 #{loopDevice}p1 -n BOOT`
    result $?
 
-   print "  Setting up swap area... "
+   print "Setting up swap area... "
    `sudo mkswap --label SWAP #{loopDevice}p2`
    result $?
 
-   print "  Formatting /... "
+   print "Formatting /... "
    `sudo mkfs.ext4 -q -L ROOT #{loopDevice}p3`
    result $?
 end
 
 def mount_image(loopDevice)
-   if not File.exist? 'gentoo'
-      print "  Creating mount point (./gentoo)... "
+   if not Dir.exist? 'gentoo'
+      print "Creating mount point (./gentoo)... "
       `sudo mkdir gentoo`
       result $?
    end
 
-   print "  Mounting image's /... "
+   print "Mounting image's /... "
    `sudo mount #{loopDevice}p3 gentoo`
    result $?
 
-   print "  Creating gentoo/boot... "
+   print "Creating gentoo/boot... "
    `sudo mkdir gentoo/boot`
    result $?
 
-   print "  Mounting image's /boot... "
+   print "Mounting image's /boot... "
    `sudo mount #{loopDevice}p1 gentoo/boot` 
    result $?
 end
@@ -188,7 +188,7 @@ def download_latest_stage3(mirror)
    fileName = File.basename(latest)
 
    if not File.exist?(fileName)
-      print "  Downloading latest stage3 tarball... "
+      print "Downloading latest stage3 tarball... "
       `wget --quiet -c #{latest}`
       result $?
    end
@@ -196,20 +196,20 @@ def download_latest_stage3(mirror)
    latestChecksums = latest + ".DIGESTS.asc"
    latestChecksumsFileName = File.basename(latestChecksums)
    if not File.exist?(latestChecksumsFileName)
-      print "  Downloading checksums for stage3 tarball... "
+      print "Downloading checksums for stage3 tarball... "
       `wget --quiet -c #{latestChecksums}`
       result $?
    end
 
-   print "  Validating stage3 checksums... "
+   print "Validating stage3 checksums... "
    `gpg --verify #{latestChecksumsFileName} 2>&1`
    result $?
 
-   print "  Calculating stage3 SHA-512 hash... "
+   print "Calculating stage3 SHA-512 hash... "
    hash = `sha512sum #{fileName}`
    result $?
 
-   print "  Verifying stage3 checksum... "
+   print "Verifying stage3 checksum... "
    if hash.strip == sha512HashFromFile(latestChecksumsFileName)
       succeeded
    else
@@ -221,23 +221,23 @@ def download_latest_stage3(mirror)
 end
 
 def extract_stage3(fileName)
-   print "  Extracting stage 3 image... "
+   print "Extracting stage 3 image... "
    `sudo tar xfpj #{fileName} -C gentoo/`
    result $?
 end
 
 def extract_portage_snapshot(fileName)
-   print "  Extracting portage snapshot... "
+   print "Extracting portage snapshot... "
    `sudo tar xf #{fileName} -C gentoo/usr`
    result $?
 end
 
 def unmount_image(loopDevice)
-   print "  Unmounting gentoo/boot... "
+   print "Unmounting gentoo/boot... "
    `sudo umount gentoo/boot`
    result $?
 
-   print "  Unmounting gentoo... "
+   print "Unmounting gentoo... "
    `sudo umount gentoo`
    result $?
 end
@@ -251,15 +251,22 @@ def download_latest_portage(mirror)
    signatureFileName = 'portage-latest.tar.xz.gpgsig'
 
    lastMD5 = '' 
-   if File.exist?(signatureFileName)
-      f = File.open(signatureFileName, 'r')
+   if File.exist?(md5FileName)
+      f = File.open(md5FileName, 'r')
       lastMD5 = f.read
       f.close
 
-      File.delete signatureFileName
+      print "Deleting old checksum files of portage snapshot... "
+      begin
+         File.delete md5FileName
+         succeeded
+      rescue
+         failed
+         exit 1
+      end
    end
 
-   print "  Downloading checksum of portage snapshot... "
+   print "Downloading checksum of portage snapshot... "
    `wget --quiet -c #{md5Uri}`
    result $?
 
@@ -267,25 +274,37 @@ def download_latest_portage(mirror)
    newMD5 = f.read
    f.close
 
-   if lastMD5 != newMD5
-      print "  Downloading latest portage snapshot... "
+   if lastMD5.strip != newMD5.strip
+      exit 2
+      if File.exist?(portageFileName)
+         print "Deleting old portage snapshot... "
+         begin
+            File.delete portageFileName
+            succeeded
+         rescue
+            failed
+            exit 1
+         end
+      end
+
+      print "Downloading latest portage snapshot... "
       `wget --quiet -c #{portageUri}`
       result $?
 
-      print "  Downloading signature of snapshot... "
+      print "Downloading signature of snapshot... "
       `wget --quiet -c #{signatureUri}`
       result $?
    end
 
-   print "  Validating signature of snapshot... "
+   print "Validating signature of snapshot... "
    `gpg --verify #{signatureFileName} #{portageFileName} 2>&1`
    result $?
 
-   print "  Calculating MD5 hash of snapshot... "
+   print "Calculating MD5 hash of snapshot... "
    hash = `md5sum #{portageFileName}`
    result $?
 
-   print "  Verifying hash of portage snapshot... "
+   print "Verifying hash of portage snapshot... "
    if hash.strip == newMD5.strip
       succeeded
    else
@@ -298,13 +317,13 @@ end
 
 def download_latest_firmware
    if not Dir.exist?("firmware")
-      print "  Cloing latest kernel repository... "
+      print "Cloning latest kernel repository... "
       `git clone --depth 1 git://github.com/raspberrypi/firmware/ 2>&1`
       result $?
    else
-      print "  Updating latest kernel repository... "
+      print "Updating latest kernel repository... "
       Dir.chdir "firmware"
-      `git pull`
+      `git pull 2>&1`
       Dir.chdir ".."
       result $?
    end
@@ -313,13 +332,13 @@ def download_latest_firmware
 end
 
 def install_kernel_and_firmware(firmwarePath)
-   print "  Copying kernel and boot code... "
+   print "Copying kernel and boot code... "
    `sudo cp firmware/boot/* gentoo/boot`
    result $?
 end
 
 def copy_kernel_modules(firmwarePath)
-   print "  Copying kernenl modules... "
+   print "Copying kernenl modules... "
    `sudo cp -r firmware/modules gentoo/lib`
    result $?
 end
