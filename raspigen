@@ -275,7 +275,6 @@ def download_latest_portage(mirror)
    f.close
 
    if lastMD5.strip != newMD5.strip
-      exit 2
       if File.exist?(portageFileName)
          print "Deleting old portage snapshot... "
          begin
@@ -366,6 +365,20 @@ def configure_timezone(timezone)
    result $?
 end
 
+def set_root_password
+   print "Setting root password... "
+   `sudo sed -re "s/^root:[^\:]*:(.*)/root:dAAHRATQjJP3k:\1/" gentoo/etc/shadow`
+   result $?
+end
+
+def enable_networking
+   print "Creating /etc/init.d/net.eth0... "
+   Dir.chdir "gentoo/etc/init.d"
+   `sudo ln -s net.lo net.eth0`
+   Dir.chdir "../../.."
+   result $?
+end
+
 # Main program
 options = Options.parse ARGV
 
@@ -411,5 +424,7 @@ copy_kernel_modules(firmwarePath)
 copy_fstab
 copy_cmdline_txt
 configure_timezone(timezone)
+set_root_password
+enable_networking
 unmount_image(loopDevice)
 detach_loop_device(loopDevice)
