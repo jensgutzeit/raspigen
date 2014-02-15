@@ -5,13 +5,14 @@ require 'ostruct'
 require 'net/http'
 require 'fileutils'
 
-RASPIGEN_VERSION = [0, 0, 7]
+RASPIGEN_VERSION = [0, 1, 0]
 
 class Options
    def self.parse(args)
       options = OpenStruct.new
       options.size = 0
       options.image_name = 'gentoo.img'
+      options.hostname = 'raspi'
       
       opt_parser = OptionParser.new do |opts|
          opts.banner = 'Usage: raspigen [options]'
@@ -22,6 +23,10 @@ class Options
 
          opts.on '-s', '--size IMAGESIZE', 'Set size of image in byte' do |s|
             options.size = s.to_i
+         end
+
+         opts.on '--hostname HOSTNAME', 'Set the hostname' do |h|
+            options.hostname = h
          end
 
          opts.on_tail '-h', '--help', 'Show this message' do
@@ -70,6 +75,17 @@ def result(program_result)
 end
 
 def create_disk_image(imageName, size)
+   if File.exist?(imageName)
+      print "Deleting old disk image... "
+      begin
+         File.delete imageName
+         succeeded
+      rescue
+         failed
+         exit 1
+      end
+   end
+ 
    print "Creating disk image '#{imageName}' (#{size} byte)... "
    `truncate -s #{size} #{imageName}`
    result $?
@@ -290,6 +306,17 @@ def download_latest_portage(mirror)
       `wget --quiet -c #{portageUri}`
       result $?
 
+      if File.exist?(signatureFileName)
+         print "Deleting old portage signature... "
+         begin
+            File.delete signatureFileName
+            succeeded
+         rescue
+            failed
+            exit 1
+         end
+      end
+
       print "Downloading signature of snapshot... "
       `wget --quiet -c #{signatureUri}`
       result $?
@@ -316,11 +343,11 @@ end
 
 def download_latest_firmware
    if not Dir.exist?("firmware")
-      print "Cloning latest kernel repository... "
+      print "Cloning Raspberry Pi kernel repository... "
       `git clone --depth 1 git://github.com/raspberrypi/firmware/ 2>&1`
       result $?
    else
-      print "Updating latest kernel repository... "
+      print "Updating Raspberry Pi kernel repository... "
       Dir.chdir "firmware"
       `git pull 2>&1`
       Dir.chdir ".."
@@ -366,8 +393,21 @@ def configure_timezone(timezone)
 end
 
 def set_root_password
-   print "Setting root password... "
-   `sudo sed -re "s/^root:[^\:]*:(.*)/root:dAAHRATQjJP3k:\1/" gentoo/etc/shadow`
+   print "Hashing root password... "
+   output = `mkpasswd --method=SHA-512 gentoo`
+   result $?
+
+   hash = output.strip
+   hash = hash.gsub "$", "\\$"
+   hash = hash.gsub "/", "\\/"
+   hash = hash.gsub "&", "\\&"
+
+   print "Setting up root password... "
+   `sudo sh -c "sed -r 's/^root:[^\:]*:(.*)$/root:#{hash}:\\1/' gentoo/etc/shadow > gentoo/etc/shadow2"`
+   result $?
+
+   print "Updating /etc/shadow... "
+   `sudo mv gentoo/etc/shadow2 gentoo/etc/shadow`
    result $?
 end
 
@@ -376,6 +416,26 @@ def enable_networking
    Dir.chdir "gentoo/etc/init.d"
    `sudo ln -s net.lo net.eth0`
    Dir.chdir "../../.."
+   result $?
+end
+
+def enable_sshd
+   print "Enabling SSH daemon... "
+   Dir.chdir "gentoo/etc/runlevels/default"
+   `sudo ln -s /etc/init.d/sshd sshd` 
+   Dir.chdir "../../../.."
+   result $?
+end
+
+def set_gpu_memory
+   print "Setting amount of GPU memory... "
+   `sudo cp files/config.txt gentoo/boot/`
+   result $?
+end
+
+def set_hostname(name)
+   print "Settings hostname to '#{name}'... "
+   `sudo sh -c "echo hostname=\"#{name}\" > gentoo/etc/conf.d/hostname"`
    result $?
 end
 
@@ -426,5 +486,8 @@ copy_cmdline_txt
 configure_timezone(timezone)
 set_root_password
 enable_networking
+enable_sshd
+set_gpu_memory
+set_hostname(options.hostname)
 unmount_image(loopDevice)
 detach_loop_device(loopDevice)
