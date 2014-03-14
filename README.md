@@ -8,6 +8,44 @@ Gentoo disk image for a Raspberry Pi.
 It assumes that you are running a Linux with the following tools installed:
 
 * Ruby (>= 2.0)
+* Various command line utilities
+   * truncate
+   * losetup
+   * parted
+   * mkfs.msdos
+   * mkfs.ext4
+   * mkswap
+   * wget
+   * gpg
+   * sha512sum
+   * tar
+   * git
+   * mkpasswd
+   * sed
+* Root access with sudo
+
+## How to use
+
+Determine the size of your SD card and run the script:
+
+   `raspigen -s <size of your SD card in bytes> --hostname <rpi's hostname>`
+
+The script will download various files (stage3, latest portage, firmware for
+the Raspberry Pi) and install it on a disk image, named gentoo.img by default.
+Depending on the speed of your internet connection it will take around 20
+minutes to create it. Copy the disk image to your SD card after the script
+is done:
+
+   `dd if=gentoo.img of=/dev/<SD card device>`
+
+The installation assumes that a DHCP server is running. Log into your new
+Gentoo on the Raspberry Pi with:
+
+   `ssh root@<rpi's hostname>`
+
+Use the default password `gentoo`.
+
+Make sure to secure your new Gentoo installation right after the login!
 
 ## License
 
